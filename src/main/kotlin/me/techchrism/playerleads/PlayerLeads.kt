@@ -5,41 +5,51 @@ import org.bukkit.Bukkit.getPluginManager
 import org.bukkit.Bukkit.getScheduler
 import org.bukkit.Particle.DustOptions
 import org.bukkit.block.BlockFace
+import org.bukkit.block.data.Directional
+import org.bukkit.enchantments.Enchantment
 import org.bukkit.entity.Entity
 import org.bukkit.entity.LeashHitch
 import org.bukkit.entity.Player
-import org.bukkit.entity.Turtle
+import org.bukkit.entity.Bat
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
+import org.bukkit.event.block.BlockDispenseEvent
 import org.bukkit.event.hanging.HangingBreakEvent
 import org.bukkit.event.player.PlayerInteractAtEntityEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
+import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.ShapelessRecipe
+import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.scoreboard.Team
 import org.bukkit.util.Vector
+import java.util.*
+import kotlin.collections.HashMap
+import kotlin.collections.HashSet
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class PlayerLeads : JavaPlugin(), Listener {
-    private val leashed: HashMap<Player, HashSet<Turtle>> = HashMap()
+    private val leashed: HashMap<Player, HashSet<Bat>> = HashMap()
+    private lateinit var targetedLeadKey: NamespacedKey
 
     override fun onEnable() {
         getPluginManager().registerEvents(this, this)
         getScheduler().scheduleSyncRepeatingTask(this, {
-            for((player, turtles) in leashed) {
-                turtles.removeIf { !(it.isValid && it.isLeashed) }
-                if(turtles.size == 0) continue
+            for((player, bats) in leashed) {
+                bats.removeIf { !(it.isValid && it.isLeashed) }
+                if(bats.size == 0) continue
                 
                 val distance = 3
                 
                 val tension = Vector(0, 0, 0)
-                for(turtle in turtles) {
-                    val vec = turtle.leashHolder.location.toVector().subtract(player.getLeashLocation().toVector())
+                for(bat in bats) {
+                    val vec = bat.leashHolder.location.toVector().subtract(player.getLeashLocation().toVector())
                     val len = vec.length()
-                    if(turtles.size > 1) {
+                    if(bats.size > 1) {
                         // Automatically tension leads if attached to more than one object
                         tension.add(vec.normalize().multiply(len))
                     } else if(len > distance) {
@@ -67,6 +77,39 @@ class PlayerLeads : JavaPlugin(), Listener {
                 }
             }
         }, 1L, 1L)
+        
+        targetedLeadKey = NamespacedKey.fromString("targetedlead", this)!!
+        val targetedLeadRecipe = ShapelessRecipe(targetedLeadKey, generateTargetedLead())
+        targetedLeadRecipe.addIngredient(Material.LEAD)
+        targetedLeadRecipe.addIngredient(Material.REDSTONE)
+        Bukkit.addRecipe(targetedLeadRecipe)
+    }
+
+    override fun onDisable() {
+        Bukkit.removeRecipe(targetedLeadKey)
+    }
+    
+    private fun getTargetedLeadDesc(target: Player? = null) : List<String> {
+        val targetStr = (if(target == null) "${ChatColor.GRAY}None" else "${ChatColor.BLUE}${target.name}")
+        return listOf(
+            "${ChatColor.GOLD} ● Currently targeting: ${targetStr}",
+            "${ChatColor.GOLD} ● Click a player with this lead",
+            "${ChatColor.GOLD}    in hand to target them",
+            "${ChatColor.GOLD} ● When dispensed in front of",
+            "${ChatColor.GOLD}    a fence within range of target,",
+            "${ChatColor.GOLD}    automatically attaches them",
+        )
+    }
+    
+    private fun generateTargetedLead() : ItemStack {
+        val item = ItemStack(Material.LEAD, 1)
+        val meta = item.itemMeta!!
+        meta.setDisplayName("${ChatColor.WHITE}Targeted Lead")
+        meta.lore = getTargetedLeadDesc()
+        meta.persistentDataContainer.set(targetedLeadKey, PersistentDataType.STRING, "none")
+        meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
+        item.itemMeta = meta
+        return item
     }
     
     private fun drawVector(vector: Vector, location: Location, resolution: Double) {
@@ -92,16 +135,18 @@ class PlayerLeads : JavaPlugin(), Listener {
         leashed.remove(player)
     }
     
-    private fun unleashFrom(player: Player, turtle: Turtle, remove: Boolean = true) {
-        turtle.world.dropItemNaturally(turtle.leashHolder.location, ItemStack(Material.LEAD, 1))
-        if(remove) {
-            leashed[player]?.remove(turtle)
+    private fun unleashFrom(player: Player, bat: Bat, remove: Boolean = true) {
+        if(player.isLeashed && !player.leashHolder.persistentDataContainer.has(targetedLeadKey, PersistentDataType.BYTE)) {
+            bat.world.dropItemNaturally(bat.leashHolder.location, ItemStack(Material.LEAD, 1))
         }
-        turtle.remove()
+        if(remove) {
+            leashed[player]?.remove(bat)
+        }
+        bat.remove()
     }
     
     private fun Player.getLeashLocation(): Location {
-        return this.eyeLocation.subtract(0.0, 0.3, 0.0)
+        return this.eyeLocation.subtract(0.0, 0.75, 0.0)
     }
     
     private fun Vector.primaryBlockFace(): BlockFace {
@@ -113,13 +158,13 @@ class PlayerLeads : JavaPlugin(), Listener {
     }
     
     private fun leash(holder: Entity, victim: Player) {
-        val turtle = victim.world.spawn(victim.getLeashLocation(), Turtle::class.java) { turtle: Turtle ->
+        val bat = victim.world.spawn(victim.getLeashLocation(), Bat::class.java) { bat: Bat ->
             run {
-                with(turtle) {
+                with(bat) {
                     isInvulnerable = true
-                    setBaby()
-                    isInvisible = true
+                    //isInvisible = true
                     isSilent = true
+                    isAwake = true
                     setAI(false)
                     setGravity(false)
                     setLeashHolder(holder)
@@ -132,17 +177,17 @@ class PlayerLeads : JavaPlugin(), Listener {
                 player.scoreboard = Bukkit.getScoreboardManager()!!.newScoreboard
             }
             
-            // Add turtle to no collision
+            // Add bat to no collision
             val team = player.scoreboard.getTeam("no-collision") ?: run {
                 val newTeam = player.scoreboard.registerNewTeam("no-collision")
                 newTeam.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.NEVER)
                 newTeam
             }
-            team.addEntry(turtle.uniqueId.toString())
+            team.addEntry(bat.uniqueId.toString())
         }
         
-        turtle.world.playSound(turtle.location, Sound.ENTITY_LEASH_KNOT_PLACE, 1.0F, 1.0F)
-        leashed.getOrPut(victim) { HashSet() }.add(turtle)
+        bat.world.playSound(bat.location, Sound.ENTITY_LEASH_KNOT_PLACE, 1.0F, 1.0F)
+        leashed.getOrPut(victim) { HashSet() }.add(bat)
     }
     
     @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
@@ -155,24 +200,38 @@ class PlayerLeads : JavaPlugin(), Listener {
             item.amount--
         }
         
+        if(item.hasItemMeta()) {
+            val uuidStr = item.itemMeta?.persistentDataContainer?.get(targetedLeadKey, PersistentDataType.STRING)
+            if(uuidStr != null) {
+                if(uuidStr == interacted.uniqueId.toString()) return
+                val meta = item.itemMeta!!
+                meta.lore = getTargetedLeadDesc(interacted)
+                meta.addEnchant(Enchantment.BINDING_CURSE, 1, true)
+                meta.persistentDataContainer.set(targetedLeadKey, PersistentDataType.STRING, interacted.uniqueId.toString())
+                item.itemMeta = meta
+                event.player.playSound(event.player.location, Sound.BLOCK_NOTE_BLOCK_CHIME, 1.0F, 1.0F)
+                return
+            }
+        }
+        
         leash(event.player, interacted)
     }
     
     @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
     private fun onPlayerMove(event: PlayerMoveEvent) {
-        val turtles = leashed[event.player] ?: return
+        val bats = leashed[event.player] ?: return
 
-        for(turtle in turtles) {
-            turtle.teleport(event.player.getLeashLocation())
+        for(bat in bats) {
+            bat.teleport(event.player.getLeashLocation())
         }
     }
     
     @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
     private fun onHitchBreak(event: HangingBreakEvent) {
-        for((player, turtles) in leashed) {
-            for(turtle in turtles) {
-                if(turtle.leashHolder == event.entity) {
-                    unleashFrom(player, turtle)
+        for((player, bats) in leashed) {
+            for(bat in bats) {
+                if(bat.leashHolder == event.entity) {
+                    unleashFrom(player, bat)
                     return
                 }
             }
@@ -183,14 +242,52 @@ class PlayerLeads : JavaPlugin(), Listener {
     private fun onHitchInteract(event: PlayerInteractAtEntityEvent) {
         val entity = event.rightClicked
         if(entity is LeashHitch) {
-            for((player, turtles) in leashed) {
-                for(turtle in turtles) {
-                    if(turtle.leashHolder == entity) {
-                        unleashFrom(player, turtle)
+            for((player, bats) in leashed) {
+                for(bat in bats) {
+                    if(bat.leashHolder == entity) {
+                        unleashFrom(player, bat)
                         return
                     }
                 }
             }
+        }
+    }
+    
+    @EventHandler(ignoreCancelled = true)
+    private fun onItemDispense(event: BlockDispenseEvent) {
+        if(!event.item.hasItemMeta()) return
+        val uuidStr = event.item.itemMeta!!.persistentDataContainer.get(targetedLeadKey, PersistentDataType.STRING) ?: return
+        
+        event.isCancelled = true
+        if(uuidStr != "none") {
+            val uuid = UUID.fromString(uuidStr)
+            val player = Bukkit.getPlayer(uuid)
+            if(!(player != null && player.world == event.block.world)) return
+            if(player.location.distance(event.block.location) > 50.0) return
+            
+            val blockInFront = event.block.getRelative((event.block.blockData as Directional).facing)
+            if(!blockInFront.type.name.endsWith("_FENCE")) return
+            
+            // Check for existing hitches
+            val entities = blockInFront.world.getNearbyEntities(blockInFront.boundingBox)
+            for(entity in entities) {
+                if(entity is LeashHitch) {
+                    for((victim, bats) in leashed) {
+                        for(bat in bats) {
+                            if(bat.leashHolder == entity) {
+                                entity.remove()
+                                unleashFrom(victim, bat)
+                                return
+                            }
+                        }
+                    }
+                }
+            }
+            
+            val hitch = blockInFront.world.spawn(blockInFront.location, LeashHitch::class.java) {
+                it.persistentDataContainer.set(targetedLeadKey, PersistentDataType.BYTE, 1)
+            }
+            leash(hitch, player)
         }
     }
 }
