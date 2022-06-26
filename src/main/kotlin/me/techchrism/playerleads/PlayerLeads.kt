@@ -14,11 +14,18 @@ import org.bukkit.entity.Bat
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
+import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDispenseEvent
+import org.bukkit.event.block.BlockPlaceEvent
+import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.EntityDamageEvent
+import org.bukkit.event.hanging.HangingBreakByEntityEvent
 import org.bukkit.event.hanging.HangingBreakEvent
 import org.bukkit.event.player.PlayerInteractAtEntityEvent
+import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.ShapelessRecipe
@@ -136,7 +143,7 @@ class PlayerLeads : JavaPlugin(), Listener {
     }
     
     private fun unleashFrom(player: Player, bat: Bat, remove: Boolean = true) {
-        if(player.isLeashed && !player.leashHolder.persistentDataContainer.has(targetedLeadKey, PersistentDataType.BYTE)) {
+        if(bat.isLeashed && !bat.leashHolder.persistentDataContainer.has(targetedLeadKey, PersistentDataType.BYTE)) {
             bat.world.dropItemNaturally(bat.leashHolder.location, ItemStack(Material.LEAD, 1))
         }
         if(remove) {
@@ -193,8 +200,20 @@ class PlayerLeads : JavaPlugin(), Listener {
     @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
     private fun onPlayerInteractAtEntity(event: PlayerInteractAtEntityEvent) {
         val interacted = event.rightClicked
+        if(interacted !is Player) return
+        
+        val interactedBats = leashed[interacted]
+        if(event.hand == EquipmentSlot.HAND && interactedBats != null) {
+            for(bat in interactedBats) {
+                if(bat.isLeashed && bat.leashHolder == event.player) {
+                    unleashFrom(interacted, bat, true)
+                    return
+                }
+            }
+        }
+        
         val item = event.player.inventory.getItem(event.hand) ?: return
-        if(!(interacted is Player && item.type == Material.LEAD)) return
+        if(item.type != Material.LEAD) return
         
         if(event.player.gameMode != GameMode.CREATIVE) {
             item.amount--
@@ -240,6 +259,9 @@ class PlayerLeads : JavaPlugin(), Listener {
     
     @EventHandler
     private fun onHitchInteract(event: PlayerInteractAtEntityEvent) {
+        if(leashed.containsKey(event.player)) {
+            event.isCancelled = true
+        }
         val entity = event.rightClicked
         if(entity is LeashHitch) {
             for((player, bats) in leashed) {
@@ -288,6 +310,57 @@ class PlayerLeads : JavaPlugin(), Listener {
                 it.persistentDataContainer.set(targetedLeadKey, PersistentDataType.BYTE, 1)
             }
             leash(hitch, player)
+        }
+    }
+    
+    @EventHandler(ignoreCancelled = true)
+    private fun onBlockPlace(event: BlockPlaceEvent) {
+        if(leashed.containsKey(event.player)) {
+            event.isCancelled = true
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    private fun onBlockBreak(event: BlockBreakEvent) {
+        if(leashed.containsKey(event.player)) {
+            event.isCancelled = true
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    private fun onInteract(event: PlayerInteractEvent) {
+        if(leashed.containsKey(event.player)) {
+            event.isCancelled = true
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    private fun onDamage(event: EntityDamageEvent) {
+        val player = event.entity
+        if(player !is Player) return
+        
+        if(leashed.containsKey(player)) {
+            event.damage = 0.0
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    private fun onDamageByEntity(event: EntityDamageByEntityEvent) {
+        val damager = event.damager
+        if(damager !is Player) return
+
+        if(leashed.containsKey(damager)) {
+            event.isCancelled = true
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    private fun onHitchBreakByPlayer(event: HangingBreakByEntityEvent) {
+        val entity = event.entity
+        if(entity !is Player) return
+
+        if(leashed.containsKey(entity)) {
+            event.isCancelled = true
         }
     }
 }
