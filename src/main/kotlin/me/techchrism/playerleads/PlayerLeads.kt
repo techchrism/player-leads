@@ -54,6 +54,7 @@ class PlayerLeads : JavaPlugin(), Listener {
                 
                 val tension = Vector(0, 0, 0)
                 for(bat in bats) {
+                    bat.teleport(player.getLeashLocation())
                     val vec = bat.leashHolder.location.toVector().subtract(player.getLeashLocation().toVector())
                     val len = vec.length()
                     if(bats.size > 1) {
@@ -169,7 +170,7 @@ class PlayerLeads : JavaPlugin(), Listener {
             run {
                 with(bat) {
                     isInvulnerable = true
-                    //isInvisible = true
+                    isInvisible = true
                     isSilent = true
                     isAwake = true
                     setAI(false)
