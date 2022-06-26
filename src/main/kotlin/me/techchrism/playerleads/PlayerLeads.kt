@@ -330,6 +330,11 @@ class PlayerLeads : JavaPlugin(), Listener {
 
     @EventHandler(ignoreCancelled = true)
     private fun onInteract(event: PlayerInteractEvent) {
+        val block = event.clickedBlock
+        if(block != null && (block.type.name.endsWith("PRESSURE_PLATE") || block.type == Material.TRIPWIRE)) {
+            return
+        }
+            
         if(leashed.containsKey(event.player)) {
             event.isCancelled = true
         }
