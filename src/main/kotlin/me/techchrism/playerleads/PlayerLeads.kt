@@ -46,6 +46,7 @@ class PlayerLeads : JavaPlugin(), Listener {
     override fun onEnable() {
         getPluginManager().registerEvents(this, this)
         getScheduler().scheduleSyncRepeatingTask(this, {
+            leashed.entries.removeIf { it.value.size == 0 }
             for((player, bats) in leashed) {
                 bats.removeIf { !(it.isValid && it.isLeashed) }
                 if(bats.size == 0) continue
