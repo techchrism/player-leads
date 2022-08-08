@@ -217,10 +217,6 @@ class PlayerLeads : JavaPlugin(), Listener {
         val item = event.player.inventory.getItem(event.hand) ?: return
         if(item.type != Material.LEAD) return
         
-        if(event.player.gameMode != GameMode.CREATIVE) {
-            item.amount--
-        }
-        
         if(item.hasItemMeta()) {
             val uuidStr = item.itemMeta?.persistentDataContainer?.get(targetedLeadKey, PersistentDataType.STRING)
             if(uuidStr != null) {
@@ -236,6 +232,9 @@ class PlayerLeads : JavaPlugin(), Listener {
         }
         
         leash(event.player, interacted)
+        if(event.player.gameMode != GameMode.CREATIVE) {
+            item.amount--
+        }
     }
     
     @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
@@ -341,7 +340,7 @@ class PlayerLeads : JavaPlugin(), Listener {
         }
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
     private fun onDamage(event: EntityDamageEvent) {
         val player = event.entity
         if(player !is Player) return
