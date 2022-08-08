@@ -5,5 +5,3 @@ author: Techdoodle
 api-version: 1.19
 libraries:
   - org.jetbrains.kotlin:kotlin-stdlib:1.7.0
-commands:
-  plsfreeme:
