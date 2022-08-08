@@ -95,6 +95,9 @@ class PlayerLeads : JavaPlugin(), Listener {
     }
 
     override fun onDisable() {
+        for((player, bats) in leashed) {
+            unleashFromAll(player)
+        }
         Bukkit.removeRecipe(targetedLeadKey)
     }
     
