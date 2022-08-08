@@ -10,6 +10,10 @@ Spigot plugin to enable attaching players to leads
  - Using multiple leads on a player constrains them to the midpoint
  - Automated "targeted" leads that work in a dispenser
 
+Targeted leads are crafted using a lead and redstone dust.
+Clicking on a player with the lead will target that player.
+Targeted leads can be placed in a dispenser facing a fencepost to automatically lead the targeted player when activated.
+
 ## Gameplay
 
 https://user-images.githubusercontent.com/26680599/183325835-da6abdcc-c4da-407b-829f-2348d8b8722b.mp4
